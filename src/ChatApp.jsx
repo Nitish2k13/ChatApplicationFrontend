@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from 'react';
 import { Client } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import axios from 'axios';
+import { Volume2, VolumeX, Pin, PinOff } from 'lucide-react';
+
 
 const BACKEND_URL = 'http://localhost:8080';
 const SOCKET_URL = BACKEND_URL + '/chat-websocket';
@@ -15,6 +17,10 @@ export default function ChatApp() {
   const [file, setFile] = useState(null);
   const clientRef = useRef(null);
   const messageEndRef = useRef(null);
+  const [replyTo, setReplyTo] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+
+
 
   // AI chat state
   const [aiInput, setAiInput] = useState('');
@@ -54,26 +60,47 @@ export default function ChatApp() {
     }
   };
 
-  const sendMessage = () => {
-    if (message.trim()) {
-      const msg = { sender: username, content: message, type: 'CHAT' };
-      clientRef.current.publish({ destination: '/app/chat.send', body: JSON.stringify(msg) });
-      setMessage('');
-    }
-  };
+const sendMessage = () => {
+  if (message.trim()) {
+    const msg = {
+      sender: username,
+      content: message,
+      type: 'CHAT',
+      replyTo: replyTo ? {
+        id: replyTo.id,
+        sender: replyTo.sender,
+        content: replyTo.content,
+      } : null,
+    };
+    clientRef.current.publish({ destination: '/app/chat.send', body: JSON.stringify(msg) });
+    setMessage('');
+    setReplyTo(null); // Clear reply after sending
+  }
+};
+
 
   const handleUpload = async () => {
-    if (!file) return;
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('sender', username);
-    try {
-      await axios.post(`${BACKEND_URL}/chat/upload`, formData);
-      setFile(null);
-    } catch (err) {
-      console.error('Upload failed', err);
-    }
-  };
+  if (!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('sender', username);
+
+  try {
+    await axios.post(`${BACKEND_URL}/chat/upload`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: (progressEvent) => {
+        const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+        setUploadProgress(percentCompleted);
+      },
+    });
+    setFile(null);
+    setUploadProgress(0);
+  } catch (err) {
+    console.error('Upload failed', err);
+    setUploadProgress(0);
+  }
+};
+
 
   const pinMessage = async (id, pinned) => {
     try {
@@ -100,7 +127,7 @@ export default function ChatApp() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: 'Bearer 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',
+          Authorization: 'Bearer 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',
         },
         body: JSON.stringify({
           model: 'google/gemma-3n-e4b-it:free',
@@ -138,7 +165,23 @@ export default function ChatApp() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
-      <div className="bg-blue-600 text-white p-4 text-center font-bold text-xl">Welcome, {username}</div>
+      <div className="bg-blue-600 text-white p-4 flex justify-between items-center">
+  <span className="font-bold text-xl">Welcome, {username}</span>
+  <button
+    className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded ml-4"
+    onClick={() => {
+      localStorage.removeItem('chatUsername');
+      setUsername('');
+      setEntered(false);
+      setMessages([]);
+      clientRef.current?.deactivate();
+      clientRef.current = null;
+    }}
+  >
+    Logout
+  </button>
+</div>
+
 
       <div className="flex justify-center mt-2 space-x-4">
         <button
@@ -173,7 +216,11 @@ export default function ChatApp() {
                   >
                     {/* Sender name only for others */}
                     {!isMe && <div className="text-xs font-semibold mb-1">{msg.sender}</div>}
-
+                        {msg.replyTo && (
+      <div className="text-xs italic text-gray-400 mb-1 border-l-2 pl-2 border-blue-300">
+        Reply to {msg.replyTo.sender}: "{msg.replyTo.content}"
+      </div>
+    )}
                     {isFile ? (
                       <a
                         className={`underline ${isMe ? 'text-blue-200' : 'text-blue-600'}`}
@@ -188,28 +235,59 @@ export default function ChatApp() {
                     )}
 
                     {/* Buttons: speaker and pin */}
-                    <div className="absolute top-1/2 -right-10 transform -translate-y-1/2 flex flex-col space-y-1">
-                      <button
-                        onClick={() => speakText(msg.content)}
-                        title="Speak message"
-                        className={`text-lg hover:text-yellow-400 focus:outline-none ${isMe ? 'text-white' : 'text-gray-700'}`}
-                      >
-                        🔊
-                      </button>
-                      <button
-                        onClick={() => pinMessage(msg.id, msg.pinned)}
-                        title={msg.pinned ? 'Unpin message' : 'Pin message'}
-                        className={`text-lg hover:text-yellow-400 focus:outline-none ${isMe ? 'text-white' : 'text-gray-700'}`}
-                      >
-                        {msg.pinned ? '📌' : '📍'}
-                      </button>
-                    </div>
+                    <div className="absolute top-1/2 -right-12 transform -translate-y-1/2 flex flex-col space-y-2">
+  <button
+    onClick={() => speakText(msg.content)}
+    title="Speak message"
+    className={`p-2 rounded-full border transition hover:bg-yellow-400 hover:text-white 
+      ${isMe ? 'text-white border-white' : 'text-gray-700 border-gray-400'}`}
+  >
+    <Volume2 size={18} />
+  </button>
+
+  <button
+    onClick={() => pinMessage(msg.id, msg.pinned)}
+    title={msg.pinned ? 'Unpin message' : 'Pin message'}
+    className={`p-2 rounded-full border transition hover:bg-yellow-400 hover:text-white 
+      ${isMe ? 'text-white border-white' : 'text-gray-700 border-gray-400'}`}
+  >
+    {msg.pinned ? <PinOff size={18} /> : <Pin size={18} />}
+  </button>
+  <button
+  onClick={() => setReplyTo(msg)}
+  title="Reply to this message"
+  className={`text-sm hover:text-blue-500 focus:outline-none ${isMe ? 'text-white' : 'text-gray-700'}`}
+>
+  <img
+    src="https://cdn-icons-png.flaticon.com/512/1933/1933011.png"
+    alt="Reply icon"
+    className="inline-block w-5 h-5"
+  />
+</button>
+
+</div>
+
                   </div>
                 </div>
               );
             })}
             <div ref={messageEndRef} />
           </div>
+          {replyTo && (
+  <div className="mb-2 p-2 border-l-4 border-blue-400 bg-blue-50 rounded flex justify-between items-center">
+    <div>
+      <div className="text-xs text-gray-500">Replying to {replyTo.sender}:</div>
+      <div className="text-sm font-medium truncate">{replyTo.content}</div>
+    </div>
+    <button
+      className="text-xs text-red-500 ml-4"
+      onClick={() => setReplyTo(null)}
+    >
+      ✕ Cancel
+    </button>
+  </div>
+)}
+
 
           <div className="mt-auto flex space-x-2">
             <input
@@ -230,6 +308,15 @@ export default function ChatApp() {
             <button className="bg-green-600 text-white px-3 py-1 rounded" onClick={handleUpload} disabled={!file}>
               Upload
             </button>
+            {uploadProgress > 0 && (
+  <div className="w-full bg-gray-200 rounded h-2 mt-2">
+    <div
+      className="bg-blue-600 h-2 rounded"
+      style={{ width: `${uploadProgress}%` }}
+    ></div>
+  </div>
+)}
+
           </div>
         </div>
       ) : (
