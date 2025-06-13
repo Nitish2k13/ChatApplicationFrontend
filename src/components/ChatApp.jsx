@@ -19,6 +19,24 @@ export default function ChatApp() {
   const [messages, setMessages] = useState([]);
 const [message, setMessage] = useState('');
 const { sendMessage: sendWsMessage } = useChatWebSocket(username, setMessages);
+const [chatHistory, setChatHistory] = useState([]);
+const [newMessage, setNewMessage] = useState('');
+
+const sendToAI = async () => {
+  if (!newMessage.trim()) return;
+
+  // Simulate API call to AI (replace with real API call)
+  const aiResponse = `Echo: ${newMessage}`;
+
+  const newChat = {
+    user: newMessage,
+    ai: aiResponse
+  };
+
+  setChatHistory(prev => [...prev, newChat]);
+  setNewMessage('');
+};
+
 
 
   // Inside ChatApp.jsx
@@ -164,7 +182,15 @@ useEffect(() => {
           messageEndRef={messageEndRef}
         />
       ) : (
-        <AIChat />
+        <AIChat
+  username={username}
+  chatHistory={chatHistory}
+  speakText={speakText}
+  newMessage={newMessage}
+  setNewMessage={setNewMessage}
+  sendToAI={sendToAI}
+/>
+
       )}
     </div>
   );
