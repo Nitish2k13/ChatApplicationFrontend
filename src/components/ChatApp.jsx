@@ -94,26 +94,34 @@ useEffect(() => {
     setReplyTo(null);
   };
 
-  const handleUpload = () => {
-    if (!file) return;
+const handleUpload = async () => {
+  if (!file || !username) return;
 
-    setUploadProgress(10);
-    setTimeout(() => {
-      setMessages(prev => [
-        ...prev,
-        {
-          id: Date.now(),
-          sender: username,
-          fileUrl: URL.createObjectURL(file),
-          content: file.name,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-      setFile(null);
-      setUploadProgress(100);
-      setTimeout(() => setUploadProgress(0), 1000);
-    }, 1000);
-  };
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("sender", username);
+
+  try {
+    const response = await fetch("http://localhost:8080/chat/upload", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error("Upload failed");
+
+    // Don't send the message manually — it will arrive via WebSocket
+    // const savedMessage = await response.json();
+
+    setFile(null);
+    setUploadProgress(100);
+    setTimeout(() => setUploadProgress(0), 1000);
+  } catch (error) {
+    console.error("Upload error:", error);
+    alert("File upload failed.");
+  }
+};
+
+
 
   const speakText = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);

@@ -17,6 +17,28 @@ export default function ChatScreen({
   speakText,
 }) {
   const messageEndRef = useRef(null);
+  const handleTranslate = async (message) => {
+    const userLanguage = localStorage.getItem('preferredLanguage') || 'en';
+
+    try {
+      const res = await fetch('http://localhost:8080/api/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: message,
+          targetLang: userLanguage,
+        }),
+      });
+
+      const translated = await res.text();
+      alert(`Translated: ${translated}`);
+      // Or: update a state like setTranslatedMessage(translated)
+    } catch (error) {
+      console.error('Translation failed:', error);
+    }
+  };
 
   useEffect(() => {
     messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -57,7 +79,18 @@ export default function ChatScreen({
                     {msg.content || 'File'}
                   </a>
                 ) : (
-                  <span>{msg.content}</span>
+                 <span
+  onContextMenu={(e) => {
+    e.preventDefault();
+    const shouldTranslate = window.confirm('Translate this message?');
+    if (!shouldTranslate) return;
+    handleTranslate(msg.content);
+  }}
+>
+  {msg.content}
+</span>
+
+
                 )}
 
                 <div className="absolute top-1/2 -right-12 transform -translate-y-1/2 flex flex-col space-y-2">
